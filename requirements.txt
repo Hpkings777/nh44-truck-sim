@@ -1,0 +1,5 @@
+# Install once with: python -m pip install -r requirements.txt
+numpy>=1.26,<2.3
+opencv-contrib-python>=4.11,<5
+mediapipe==0.10.35
+pygame==2.6.1
