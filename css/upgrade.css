@@ -1,0 +1,1207 @@
+/* ==========================================================================
+   NH-44 GRAND TRUNK — HEAVY HAUL 3D SIMULATOR · PREMIUM UI RESTYLE
+   File: css/upgrade.css
+   Loads AFTER css/style.css. Presentation overrides only — no class names
+   are renamed, no element is removed or hidden, no JavaScript is added.
+
+   Modes
+   ─────
+   EXPERIENCE — title screen, setup, modals, loading/error states.
+   OPERATE    — in-game HUD: glanceable telemetry, dense hierarchy,
+                touch targets >= 44px for Android.
+
+   Identity
+   ─────────
+   Indian-highway sign language: the NH-44 shield, speed-limit roundel,
+   dusk-amber signal colour on deep slate. All colour is OKLCH. All
+   surfaces are solid (no blur, no translucency as decoration) so text
+   stays legible over the moving 3D scene. No external fonts, no external
+   URLs, no @import, no background images — system font stack only, so
+   the game works fully offline on a phone.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1 · TOKENS — dusk amber + deep slate, OKLCH
+   -------------------------------------------------------------------------- */
+:root {
+  /* System font stack only (offline). These three variables are the ones
+     style.css already uses, so one override re-voices the whole game. */
+  --font-display: "Segoe UI", system-ui, -apple-system, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Surfaces — deep slate */
+  --up-bg: oklch(0.15 0.015 260);
+  --up-panel: oklch(0.2 0.018 260);
+  --up-panel-2: oklch(0.245 0.02 260);
+  --up-panel-3: oklch(0.29 0.02 260);
+  --up-line: oklch(0.36 0.018 260);
+  --up-line-strong: oklch(0.48 0.02 260);
+
+  /* Text — warm-tinted slate, never neutral grey on colour */
+  --up-ink: oklch(0.97 0.004 260);
+  --up-ink-2: oklch(0.85 0.008 260);
+  --up-ink-3: oklch(0.73 0.01 260);
+
+  /* Signal amber — dusk */
+  --up-amber: oklch(0.79 0.155 78);
+  --up-amber-bright: oklch(0.86 0.13 80);
+  --up-amber-deep: oklch(0.62 0.15 72);
+  --up-on-amber: oklch(0.21 0.03 75);
+  --up-amber-wash: oklch(0.3 0.06 78);
+
+  /* Status */
+  --up-green: oklch(0.8 0.14 165);
+  --up-green-wash: oklch(0.3 0.06 165);
+  --up-red: oklch(0.72 0.17 25);
+  --up-red-wash: oklch(0.3 0.09 25);
+  --up-red-ink: oklch(0.93 0.04 20);
+
+  /* Shape + depth. Shadows always carry offset AND soft blur. */
+  --up-radius: 12px;
+  --up-radius-sm: 9px;
+  --up-shadow-card: 0 18px 40px -12px oklch(0 0 0 / 0.6),
+    0 6px 16px -6px oklch(0 0 0 / 0.45);
+  --up-shadow-pop: 0 12px 28px -8px oklch(0 0 0 / 0.55),
+    0 4px 10px -4px oklch(0 0 0 / 0.4);
+  --up-shadow-lift: 0 8px 20px -6px oklch(0 0 0 / 0.5);
+
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------------------------------
+   2 · BROWSER SURFACES — selection, scrollbars, focus, caret, numerals
+   -------------------------------------------------------------------------- */
+::selection {
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+}
+
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--up-amber-bright);
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  caret-color: var(--up-amber-bright);
+}
+
+/* Themed scrollbars on every scrollable surface the game owns. */
+.modal-card,
+.title-layout {
+  scrollbar-width: thin;
+  scrollbar-color: var(--up-line-strong) transparent;
+}
+.modal-card::-webkit-scrollbar,
+.title-layout::-webkit-scrollbar {
+  width: 8px;
+}
+.modal-card::-webkit-scrollbar-thumb,
+.title-layout::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--up-line-strong);
+}
+.modal-card::-webkit-scrollbar-track,
+.title-layout::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Tabular numerals everywhere a number is read, not just .mono. */
+.speed-readout > div,
+.gear-control strong,
+.speed-limit,
+.engine-labels,
+.vehicle-stats,
+.stat-tiles strong,
+.route-kicker,
+.route-next,
+.quality-name,
+.mini-label,
+.hotkey {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   3 · SHARED — buttons, choices, states
+   Real states on every control: hover, focus-visible, active, disabled,
+   busy. Disabled is never just faded text — it is faded AND non-interactive
+   in appearance, with a clear "not available" treatment.
+   -------------------------------------------------------------------------- */
+button {
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled,
+.choice:disabled,
+.utility:disabled,
+.camera-choice:disabled,
+.horn-button:disabled,
+.modal-primary:disabled,
+.modal-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+/* Busy / loading state (e.g. START while the scene is building). */
+.start-button[aria-busy="true"],
+.modal-primary[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.85;
+  animation: up-busy 1.1s ease-in-out infinite alternate;
+}
+@keyframes up-busy {
+  from { opacity: 0.85; }
+  to { opacity: 0.6; }
+}
+
+/* --------------------------------------------------------------------------
+   4 · TITLE SCREEN — EXPERIENCE
+   Solid deep-slate card with a 3px amber sign-strip across the top
+   (highway-sign language). The 3D scene stays visible around it; the card
+   itself is opaque so setup text never fights the road behind it.
+   -------------------------------------------------------------------------- */
+.title-layout {
+  padding: 40px 48px;
+}
+
+.title-card {
+  width: min(100%, 600px);
+  padding: 30px 32px 26px;
+  border: 1px solid var(--up-line);
+  border-top: 3px solid var(--up-amber);
+  border-radius: var(--up-radius);
+  background: var(--up-panel);
+  box-shadow: var(--up-shadow-card);
+  /* One authored entrance moment for the whole screen. */
+  animation: up-title-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes up-title-in {
+  from { opacity: 0.01; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.title-emblem {
+  margin: 0 0 22px;
+}
+.title-emblem svg {
+  max-width: 500px;
+}
+/* The emblem's shield and wordmark already use the game's amber/ink;
+   re-voice its lettering to the system stack so nothing depends on a
+   webfont. The shield stays amber, the wordmark stays ink. */
+.title-emblem svg text {
+  font-family: var(--font-display);
+}
+
+.setup-group {
+  margin-bottom: 18px;
+}
+
+/* Field labels: full words, warm-tinted, letterspaced, never grey. */
+.field-label {
+  margin-bottom: 8px;
+  color: var(--up-ink-2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.button-grid {
+  gap: 8px;
+}
+
+.choice {
+  min-height: 44px;
+  padding: 10px 10px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+  color: var(--up-ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: normal;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease, transform 0.1s ease;
+}
+.choice:hover {
+  border-color: var(--up-line-strong);
+  background: var(--up-panel-3);
+  color: var(--up-ink);
+}
+.choice:active {
+  transform: scale(0.98);
+}
+.choice.selected {
+  border-color: var(--up-amber);
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+  box-shadow: var(--up-shadow-lift);
+}
+.choice.selected:hover {
+  background: var(--up-amber-bright);
+}
+
+/* START — the one big action. Amber sign-board, ink type, 56px tall. */
+.start-button {
+  min-height: 56px;
+  padding: 14px 20px;
+  border: 1px solid var(--up-amber-bright);
+  border-radius: 10px;
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  box-shadow: var(--up-shadow-pop);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.start-button:hover {
+  background: var(--up-amber-bright);
+}
+.start-button:active {
+  background: var(--up-amber-deep);
+  color: var(--up-on-amber);
+  transform: scale(0.99);
+}
+
+.title-meta {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--up-line);
+  color: var(--up-ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.title-footer {
+  padding: 0 4px;
+  color: var(--up-ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+  text-shadow: 0 1px 4px oklch(0 0 0 / 0.9), 0 0 12px oklch(0 0 0 / 0.6);
+  -webkit-text-stroke: 0;
+}
+.title-footer span:last-child {
+  color: var(--up-ink-2);
+  font-size: 11px;
+}
+
+/* --------------------------------------------------------------------------
+   5 · IN-GAME HUD — OPERATE
+   Solid panels, 44px targets, glanceable hierarchy: speed first, then
+   gear, then RPM, then everything else. Nothing translucent — the road
+   behind a panel must never compete with the number on it.
+   -------------------------------------------------------------------------- */
+.play-hud {
+  padding: 16px 20px 14px;
+}
+
+.top-bar {
+  gap: 12px;
+}
+
+/* --- Route card: the highway sign. --- */
+.route-card {
+  width: min(400px, 44vw);
+  padding: 10px 14px 12px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel);
+  box-shadow: var(--up-shadow-pop);
+}
+
+.route-overview {
+  gap: 12px;
+}
+
+/* Speed-limit roundel: white disc, red ring, ink numerals — the real
+   Indian sign, drawn in CSS. 44px so it reads at a glance. */
+.speed-limit {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border: 4px solid oklch(0.55 0.2 25);
+  border-radius: 50%;
+  background: oklch(0.97 0.004 260);
+  color: oklch(0.15 0.01 260);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.route-kicker {
+  color: var(--up-amber-bright);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.route-zone {
+  color: var(--up-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+.route-next {
+  color: var(--up-ink-2);
+  font-size: 11px;
+}
+
+.route-progress {
+  height: 8px;
+  margin-top: 9px;
+  border: 1px solid var(--up-line);
+  background: var(--up-panel-3);
+}
+.route-progress > div {
+  background: var(--up-green);
+}
+
+/* --- Utility bar: every control 44px, icon-only stays tappable. --- */
+.utility-bar {
+  gap: 6px;
+}
+
+.utility {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 11px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel);
+  color: var(--up-ink);
+  box-shadow: var(--up-shadow-pop);
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease;
+}
+.utility:hover {
+  border-color: var(--up-line-strong);
+  background: var(--up-panel-2);
+}
+.utility:active {
+  transform: scale(0.96);
+}
+.utility svg {
+  width: 18px;
+  height: 18px;
+}
+
+.quality-chip {
+  font-size: 11px;
+}
+.mini-label {
+  color: var(--up-ink-3);
+  font-size: 10px;
+}
+.quality-name {
+  color: var(--up-amber-bright);
+  font-size: 11px;
+}
+
+.camera-chip {
+  font-size: 12px;
+}
+.camera-name {
+  color: var(--up-ink);
+}
+.hotkey {
+  color: var(--up-ink-3);
+}
+
+.icon-button {
+  width: 44px;
+  padding: 0;
+}
+.icon-button.active {
+  border-color: var(--up-amber);
+  background: var(--up-amber-wash);
+  color: var(--up-amber-bright);
+}
+.sound-button:not(.muted) {
+  color: var(--up-green);
+}
+.sound-button.muted {
+  color: var(--up-red);
+}
+
+/* Jackknife warning: solid dark-red panel, near-white type, 2px border
+   on all sides. Static — a warning must not depend on motion to be seen. */
+.jackknife {
+  top: 76px;
+  padding: 9px 16px;
+  border: 2px solid var(--up-red);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-red-wash);
+  color: var(--up-red-ink);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  box-shadow: var(--up-shadow-pop);
+}
+
+/* --------------------------------------------------------------------------
+   6 · CONTROL DOCK — OPERATE
+   Speed is the largest number on screen. Gear, RPM and fuel follow in
+   descending size. Camera + horn are full 44px buttons.
+   -------------------------------------------------------------------------- */
+.control-dock-wrap {
+  width: min(100%, 1080px);
+}
+
+.dock-toggle {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--up-line);
+  border-bottom: 0;
+  border-radius: var(--up-radius-sm) var(--up-radius-sm) 0 0;
+  background: var(--up-panel);
+  color: var(--up-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--up-shadow-pop);
+}
+.dock-toggle:hover {
+  background: var(--up-panel-2);
+  color: var(--up-ink);
+}
+
+.control-dock {
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius);
+  background: var(--up-panel);
+  box-shadow: var(--up-shadow-card);
+}
+
+.dock-left {
+  gap: 12px;
+}
+
+.indicator-button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+  color: var(--up-ink-2);
+  font-size: 18px;
+  font-weight: 800;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease;
+}
+.indicator-button:hover {
+  border-color: var(--up-line-strong);
+  color: var(--up-ink);
+}
+.indicator-button.active {
+  border-color: var(--up-amber);
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+}
+
+/* Speed: the hero number. 44px display type, tabular, ink on slate. */
+.speed-readout {
+  min-width: 84px;
+}
+.speed-readout > div {
+  color: var(--up-ink);
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.speed-readout > span {
+  margin-top: 4px;
+  color: var(--up-ink-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.gear-control {
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+}
+.gear-control strong {
+  color: var(--up-amber-bright);
+  font-size: 22px;
+}
+.transmission {
+  min-height: 24px;
+  padding: 2px 0 0;
+  color: var(--up-ink-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+.transmission:hover {
+  color: var(--up-ink);
+}
+
+/* Shift buttons: full 44px targets, laid out side by side so the pair
+   fits the dock height instead of stacking into two 20px slivers. */
+.shift-buttons {
+  flex-direction: row;
+  gap: 4px;
+}
+.shift-buttons button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--up-line);
+  border-radius: 6px;
+  background: var(--up-panel-3);
+  color: var(--up-ink);
+  font-size: 16px;
+  font-weight: 700;
+  transition: background-color 0.15s ease;
+}
+.shift-buttons button:hover {
+  background: var(--up-line);
+}
+.shift-buttons button:active {
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+}
+
+.dock-center {
+  gap: 8px;
+}
+
+.engine-labels {
+  color: var(--up-ink-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.engine-labels span + span {
+  color: var(--up-ink-3);
+  font-weight: 600;
+}
+
+.rpm-bar {
+  height: 12px;
+  border: 1px solid var(--up-line);
+  background: var(--up-panel-2);
+}
+.economy-band {
+  border-right: 1px solid oklch(0.8 0.14 165 / 0.55);
+  border-left: 1px solid oklch(0.8 0.14 165 / 0.55);
+  background: oklch(0.8 0.14 165 / 0.22);
+}
+.rpm-fill.amber { background: var(--up-amber); }
+.rpm-fill.green { background: var(--up-green); }
+.rpm-fill.red { background: var(--up-red); }
+
+.vehicle-stats {
+  color: var(--up-ink-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+.vehicle-stats .warning {
+  color: var(--up-amber-bright);
+  font-weight: 700;
+}
+.vehicle-stats [data-field="cargo"]:not(.warning) {
+  color: var(--up-green);
+}
+
+.dock-right {
+  gap: 6px;
+}
+
+.camera-choice,
+.horn-button {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+  color: var(--up-ink-2);
+  font-size: 13px;
+  font-weight: 700;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease;
+}
+.camera-choice:hover,
+.horn-button:hover {
+  border-color: var(--up-line-strong);
+  background: var(--up-panel-3);
+  color: var(--up-ink);
+}
+.camera-choice.selected {
+  border-color: var(--up-amber);
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+}
+.horn-button {
+  padding-right: 14px;
+  padding-left: 14px;
+  color: var(--up-amber-bright);
+}
+.horn-button.active {
+  border-color: var(--up-amber);
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+}
+
+/* --------------------------------------------------------------------------
+   7 · TOUCH PEDALS (touch devices)
+   Solid panels, bigger labels, press states that read instantly.
+   -------------------------------------------------------------------------- */
+.touch-row {
+  bottom: 118px;
+  padding: 0 10px;
+}
+
+.touch-group {
+  gap: 12px;
+}
+
+.touch-button {
+  width: 68px;
+  height: 68px;
+  border: 1px solid var(--up-line-strong);
+  border-radius: 14px;
+  background: var(--up-panel);
+  color: var(--up-ink);
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: var(--up-shadow-pop);
+  transition: background-color 0.1s ease, transform 0.1s ease;
+}
+.touch-button:active {
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+  transform: scale(0.96);
+}
+.touch-button.brake {
+  height: 84px;
+  border-color: oklch(0.55 0.18 25);
+  background: var(--up-red-wash);
+  color: var(--up-red-ink);
+  font-size: 12px;
+}
+.touch-button.brake:active {
+  background: var(--up-red);
+  color: oklch(0.16 0.02 25);
+}
+.touch-button.drive {
+  height: 100px;
+  border-color: oklch(0.55 0.12 165);
+  background: var(--up-green-wash);
+  color: oklch(0.92 0.05 165);
+  font-size: 12px;
+}
+.touch-button.drive:active {
+  background: var(--up-green);
+  color: oklch(0.15 0.02 165);
+}
+
+/* --------------------------------------------------------------------------
+   8 · MODALS — pause, run results, settings
+   Opaque card on a solid dim scrim (a scrim is a state, not decoration).
+   -------------------------------------------------------------------------- */
+.modal-shade {
+  background: oklch(0.1 0.01 260 / 0.86);
+}
+.outcome-shade {
+  background: oklch(0.1 0.01 260 / 0.9);
+}
+
+.modal-card {
+  width: min(100%, 460px);
+  padding: 26px;
+  border: 1px solid var(--up-line);
+  border-top: 3px solid var(--up-amber);
+  border-radius: var(--up-radius);
+  background: var(--up-panel);
+  box-shadow: var(--up-shadow-card);
+}
+.modal-card h2 {
+  color: var(--up-ink);
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+}
+.modal-subtitle {
+  margin: 6px 0 0;
+  color: var(--up-ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* The outcome label is a status chip, not an eyebrow over the heading:
+   it sits inline, bordered, and never carries the heading's weight. */
+.outcome-kicker {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 4px 9px;
+  border: 1px solid var(--up-amber);
+  border-radius: 999px;
+  background: var(--up-amber-wash);
+  color: var(--up-amber-bright);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stat-tiles {
+  gap: 10px;
+  margin: 20px 0;
+}
+.stat-tiles > div {
+  padding: 12px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+}
+.stat-tiles span {
+  color: var(--up-ink-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.stat-tiles strong {
+  margin-top: 4px;
+  color: var(--up-ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+.stat-tiles strong.green { color: var(--up-green); }
+.stat-tiles strong.amber,
+.amber { color: var(--up-amber-bright); }
+
+.modal-settings {
+  font-size: 13px;
+}
+
+.quality-settings {
+  padding: 12px 0;
+  border-top: 1px solid var(--up-line);
+  border-bottom: 1px solid var(--up-line);
+}
+.quality-settings > div:first-child {
+  margin-bottom: 10px;
+  color: var(--up-ink);
+}
+.quality-settings > div:first-child strong {
+  color: var(--up-amber-bright);
+  font-size: 11px;
+}
+.quality-settings .choice {
+  min-height: 44px;
+  padding: 8px 6px;
+  font-size: 11px;
+}
+
+.geo-status {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+  color: var(--up-ink-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.geo-status strong {
+  margin-bottom: 3px;
+  color: var(--up-ink);
+}
+
+.modal-primary,
+.modal-secondary,
+.modal-buttons button {
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--up-line);
+  border-radius: var(--up-radius-sm);
+  background: var(--up-panel-2);
+  color: var(--up-ink);
+  font-size: 13px;
+  font-weight: 700;
+  transition: background-color 0.15s ease;
+}
+.modal-primary {
+  margin-bottom: 8px;
+  border-color: var(--up-amber-bright);
+  background: var(--up-amber);
+  color: var(--up-on-amber);
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: var(--up-shadow-pop);
+}
+.modal-primary:hover,
+.start-button:hover {
+  background: var(--up-amber-bright);
+}
+.modal-buttons button:hover,
+.modal-secondary:hover {
+  border-color: var(--up-line-strong);
+  background: var(--up-panel-3);
+}
+.modal-secondary {
+  margin-top: 8px;
+  color: var(--up-ink-2);
+}
+
+/* --------------------------------------------------------------------------
+   9 · ERROR + EMPTY STATES
+   #fatal-error is the WebGL/init failure card (role="alert", hidden until
+   needed). It must be readable at a glance, so it is solid, high-contrast,
+   and never relies on the 3D scene behind it.
+   -------------------------------------------------------------------------- */
+#fatal-error {
+  position: absolute;
+  inset: auto 16px 16px 16px;
+  z-index: 20;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 18px 20px;
+  border: 2px solid var(--up-red);
+  border-radius: var(--up-radius);
+  background: var(--up-red-wash);
+  color: var(--up-red-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  box-shadow: var(--up-shadow-card);
+}
+#fatal-error[hidden] {
+  display: none;
+}
+
+/* Empty states: no empty-state class ships in the game's own markup, so
+   there is nothing to restyle here. (Verified against style.css, the qa
+   HTML captures, and simulator.js.) */
+
+/* --------------------------------------------------------------------------
+   10 · RESPONSIVE — 1280×800 desktop, 390×844 mobile portrait
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .title-layout {
+    padding: 28px 24px;
+  }
+  .title-card {
+    padding: 24px;
+  }
+  .control-dock {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .dock-center {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .dock-right {
+    margin-left: auto;
+  }
+  .speed-readout > div {
+    font-size: 36px;
+  }
+  .touch-row {
+    bottom: 152px;
+  }
+}
+
+@media (max-width: 640px) {
+  .title-layout {
+    padding: 14px;
+    overflow: auto;
+  }
+  .title-card {
+    width: 100%;
+    margin: auto 0;
+    padding: 20px 18px;
+    border-top-width: 3px;
+  }
+  .title-emblem {
+    margin-bottom: 16px;
+  }
+  .setup-group {
+    margin-bottom: 14px;
+  }
+  /* Four quality choices become two columns so each stays >= 44px tall
+     and wide enough to read — four across at 390px is unreadable. */
+  .button-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .button-grid {
+    gap: 6px;
+  }
+  .choice {
+    padding: 10px 6px;
+    font-size: 12px;
+  }
+  .start-button {
+    font-size: 17px;
+  }
+  .title-meta {
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+  }
+  /* NOTE: base style.css hides .title-footer at <=640px. upgrade.css
+     deliberately does NOT re-assert that rule — it hides nothing. */
+
+  .play-hud {
+    padding: 10px;
+  }
+  .top-bar {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .route-card {
+    width: 100%;
+    padding: 8px 10px 10px;
+  }
+  .speed-limit {
+    flex-basis: 44px;
+  }
+  .route-zone {
+    font-size: 13px;
+  }
+  .route-next {
+    font-size: 10px;
+  }
+  .route-kicker {
+    font-size: 10px;
+  }
+
+  /* Utility bar wraps instead of shrinking below 44px. */
+  .utility-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .utility {
+    height: 44px;
+    padding: 0 8px;
+  }
+  .utility.icon-button {
+    width: 44px;
+    padding: 0;
+  }
+  .quality-chip {
+    font-size: 10px;
+  }
+  /* NOTE: base style.css hides .camera-name/.hotkey at <=640px.
+     upgrade.css does not re-assert that rule — it hides nothing. The
+     camera chip stays a 44px icon button; its aria-label still names it. */
+  .camera-chip {
+    width: 44px;
+    padding: 0;
+  }
+
+  .control-dock-wrap {
+    width: 100%;
+  }
+  .control-dock {
+    gap: 10px;
+    padding: 10px;
+  }
+  .dock-left {
+    gap: 8px;
+  }
+  .indicator-button {
+    width: 44px;
+    height: 44px;
+  }
+  .speed-readout {
+    min-width: 56px;
+  }
+  .speed-readout > div {
+    font-size: 32px;
+  }
+  .speed-readout > span {
+    font-size: 9px;
+  }
+  .gear-control {
+    gap: 6px;
+    padding: 5px 8px;
+  }
+  .gear-control strong {
+    font-size: 18px;
+  }
+  .shift-buttons button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .dock-right {
+    gap: 4px;
+  }
+  .camera-choice,
+  .horn-button {
+    min-height: 44px;
+    padding: 10px 8px;
+    font-size: 11px;
+  }
+  .engine-labels {
+    font-size: 10px;
+  }
+  .vehicle-stats {
+    gap: 6px;
+    font-size: 9px;
+  }
+  .dock-center {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .touch-row {
+    bottom: 224px;
+    padding: 0 6px;
+  }
+  .touch-group {
+    gap: 8px;
+  }
+  .touch-button {
+    width: 56px;
+    height: 56px;
+  }
+  .touch-button.brake {
+    height: 76px;
+  }
+  .touch-button.drive {
+    height: 88px;
+  }
+
+  .modal-card {
+    padding: 20px 18px;
+  }
+  .modal-card h2 {
+    font-size: 23px;
+  }
+  .stat-tiles {
+    gap: 6px;
+  }
+  .stat-tiles > div {
+    padding: 9px;
+  }
+  .stat-tiles strong {
+    font-size: 14px;
+  }
+  .jackknife {
+    top: 148px;
+    left: 10px;
+    right: 10px;
+    transform: none;
+    text-align: center;
+    font-size: 12px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   12 · UPGRADE GROUPS — compact so six setup groups fit an 800px viewport;
+   the layout scrolls instead of clipping on short screens.
+   -------------------------------------------------------------------------- */
+.title-layout {
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+.title-card {
+  margin: auto 0;
+}
+.title-emblem {
+  margin-bottom: 14px;
+}
+.setup-group {
+  margin-bottom: 12px;
+}
+.nh44-upgrade-group .button-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.nh44-upgrade-group .choice {
+  min-height: 40px;
+  padding: 8px 8px;
+}
+/* Paint swatch dot (colour set inline via --swatch by upgrade.js). */
+.choice[data-nh44="paint"]::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--swatch, #888);
+  vertical-align: -1px;
+}
+@media (max-width: 380px) {
+  .dock-left {
+    flex-wrap: wrap;
+  }
+  .utility-bar {
+    justify-content: space-between;
+  }
+}
+
+/* Short landscape screens: the title card scrolls instead of clipping. */
+@media (max-height: 540px) {
+  .title-layout {
+    padding: 12px 20px;
+    overflow: auto;
+  }
+  .title-card {
+    margin: auto 0;
+    padding: 18px 22px;
+  }
+  .title-emblem {
+    margin-bottom: 12px;
+  }
+  .setup-group {
+    margin-bottom: 10px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   11 · MOTION + FORCED COLOURS
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .title-card {
+    animation: none;
+  }
+  .start-button[aria-busy="true"],
+  .modal-primary[aria-busy="true"] {
+    animation: none;
+    opacity: 0.7;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .choice,
+  .utility,
+  .camera-choice,
+  .horn-button,
+  .indicator-button,
+  .modal-card,
+  .title-card,
+  .route-card,
+  .control-dock,
+  .touch-button {
+    border: 1px solid ButtonText;
+  }
+  .choice.selected,
+  .camera-choice.selected,
+  .indicator-button.active,
+  .start-button,
+  .modal-primary {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: HighlightText;
+  }
+}
