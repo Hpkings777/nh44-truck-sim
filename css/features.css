@@ -1,0 +1,160 @@
+/* NH-44 Driver Command Centre - isolated from the simulator's original UI. */
+#driver-tools, #driver-tools * { box-sizing: border-box; }
+#driver-tools {
+  --dt-bg: rgba(8, 15, 27, .97);
+  --dt-card: rgba(20, 31, 48, .92);
+  --dt-line: rgba(145, 166, 194, .18);
+  --dt-text: #edf4ff;
+  --dt-muted: #8ea0b9;
+  --dt-blue: #62b5ff;
+  --dt-green: #42dfa0;
+  --dt-amber: #ffc66d;
+  --dt-red: #ff6878;
+  position: fixed; z-index: 10000; top: 66px; right: 16px;
+  color: var(--dt-text); font: 12px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  pointer-events: none;
+}
+#driver-tools button, #driver-tools .dt-panel, #driver-tools select, #driver-tools input { pointer-events: auto; font: inherit; }
+#driver-tools-toggle {
+  display: flex; align-items: center; gap: 9px; margin-left: auto;
+  min-height: 42px; padding: 0 14px; border: 1px solid rgba(113, 173, 233, .38);
+  border-radius: 12px; color: #eff7ff; background: linear-gradient(135deg, rgba(14, 34, 56, .97), rgba(8, 17, 31, .97));
+  font-size: 10px; font-weight: 900; letter-spacing: .13em; cursor: pointer;
+  box-shadow: 0 9px 30px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.06); backdrop-filter: blur(18px);
+}
+#driver-tools-toggle:hover { border-color: rgba(98,181,255,.8); background: #142c46; }
+.dt-launch-icon { color: var(--dt-blue); font-size: 16px; }
+.dt-launch-state { margin-left: 4px; padding: 4px 7px; border-radius: 5px; color: #aab9cd; background: rgba(255,255,255,.07); font: 800 9px ui-monospace,monospace; letter-spacing: .04em; }
+#driver-tools-toggle[data-state="active"] .dt-launch-state { color: #adf8d4; background: rgba(20,160,101,.18); }
+#driver-tools-toggle[data-state="alert"] .dt-launch-state { color: #ffd0d5; background: rgba(220,38,65,.25); }
+.dt-panel {
+  display: none; width: min(390px, calc(100vw - 26px)); height: min(820px, calc(100vh - 132px)); max-height: calc(100vh - 132px); margin-top: 9px;
+  border: 1px solid rgba(125, 159, 197, .25); border-radius: 18px; overflow: hidden;
+  background: var(--dt-bg); box-shadow: 0 22px 70px rgba(0,0,0,.58), inset 0 1px rgba(255,255,255,.05);
+  backdrop-filter: blur(22px); pointer-events: auto;
+}
+.dt-panel.open { display: flex; flex-direction: column; animation: dtSlideIn .18s ease-out; }
+@keyframes dtSlideIn { from { opacity: .5; transform: translateY(-7px) scale(.99); } to { opacity: 1; transform: none; } }
+.dt-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 17px 17px 13px; background: radial-gradient(ellipse at 88% 0%, rgba(54,131,202,.2), transparent 54%), linear-gradient(135deg, rgba(18,36,59,.92), rgba(9,18,32,.92)); border-bottom: 1px solid var(--dt-line); }
+.dt-eyebrow { color: #80bdf1; font: 900 9px ui-monospace,monospace; letter-spacing: .18em; }
+.dt-header h2 { margin: 5px 0 2px; color: #f4f8ff; font-size: 18px; line-height: 1.2; letter-spacing: -.025em; }
+.dt-header p { margin: 0; color: var(--dt-muted); font-size: 10px; }
+.dt-close { flex: 0 0 30px; width: 30px; height: 30px; padding: 0; border: 1px solid var(--dt-line); border-radius: 9px; color: #c8d6e8; background: rgba(255,255,255,.045); font-size: 21px !important; line-height: 1; cursor: pointer; }
+.dt-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 8px 12px; background: rgba(3,9,17,.5); border-bottom: 1px solid var(--dt-line); }
+.dt-tab { padding: 9px; border: 1px solid transparent; border-radius: 8px; color: #8ea1ba; background: transparent; font-size: 10px !important; font-weight: 800 !important; letter-spacing: .08em; cursor: pointer; }
+.dt-tab.active { color: #e9f5ff; background: rgba(67,145,216,.16); border-color: rgba(89,166,236,.3); }
+.dt-view { padding: 13px 14px 14px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #314960 transparent; }
+.dt-view[hidden] { display: none !important; }
+.dt-section-head { display: flex; align-items: center; gap: 9px; margin: 2px 0 10px; }
+.dt-section-head > div { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.dt-section-head strong { font-size: 12px; color: #edf4ff; letter-spacing: .02em; }
+.dt-section-head small { margin-top: 2px; color: #7890ab; font: 800 8px ui-monospace,monospace; letter-spacing: .1em; }
+.dt-section-icon { display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid rgba(69,210,155,.26); border-radius: 9px; color: #7ce7bd; background: rgba(32,172,119,.1); font-size: 16px; }
+.dt-section-icon.blue { color: #8bcaff; border-color: rgba(98,181,255,.24); background: rgba(55,135,205,.13); }
+.dt-pill { flex: 0 0 auto; padding: 4px 7px; border: 1px solid var(--dt-line); border-radius: 6px; color: #aebbd0; background: rgba(255,255,255,.045); font: 900 8px ui-monospace,monospace; letter-spacing: .08em; }
+.dt-pill.green { color: #a9f7d3; border-color: rgba(66,223,160,.26); background: rgba(18,139,89,.16); }
+.dt-pill.amber { color: #ffe0a6; border-color: rgba(255,198,109,.28); background: rgba(177,111,20,.18); }
+.dt-pill.red { color: #ffd0d5; border-color: rgba(255,104,120,.35); background: rgba(175,32,52,.22); }
+.dt-status { padding: 9px 10px; border: 1px solid var(--dt-line); border-radius: 9px; color: #b5d8cb; background: rgba(24,68,57,.22); font-size: 10px; line-height: 1.45; }
+.dt-status[data-level="warning"] { color: #ffe2a8; background: rgba(108,69,16,.22); border-color: rgba(255,198,109,.23); }
+.dt-status[data-level="critical"] { color: #ffd0d5; background: rgba(123,22,36,.28); border-color: rgba(255,104,120,.32); }
+.dt-camera-wrap { display: none; position: relative; margin-top: 10px; overflow: hidden; aspect-ratio: 16/9; border: 1px solid rgba(122,164,205,.26); border-radius: 11px; background: #020811; }
+.dt-camera-wrap.visible { display: block; }
+#eye-preview { display: block; width: 100%; height: 100%; object-fit: cover; }
+.dt-camera-overlay { position: absolute; right: 0; bottom: 0; left: 0; display: flex; gap: 7px; align-items: center; padding: 7px 9px; color: #d8e8fb; background: linear-gradient(transparent, rgba(0,0,0,.82)); font: 900 8px ui-monospace,monospace; letter-spacing: .1em; }
+.dt-camera-overlay span:last-child { margin-left: auto; color: #9db4cc; }
+.dt-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #5be4a8; box-shadow: 0 0 8px #5be4a8; }
+.dt-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+.dt-metric { position: relative; padding: 8px 9px; border: 1px solid var(--dt-line); border-radius: 9px; background: rgba(255,255,255,.025); }
+.dt-metric span { color: #8298b2; font: 800 8px ui-monospace,monospace; letter-spacing: .1em; }
+.dt-metric strong { float: right; color: #eff6ff; font: 700 11px ui-monospace,monospace; }
+.dt-meter { height: 4px; margin-top: 9px; overflow: hidden; border-radius: 5px; background: rgba(255,255,255,.08); }
+.dt-meter i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#41dba1,#ffd06e,#ff657a); transition: width .12s linear; }
+.dt-debug { margin-top: 8px; padding: 8px 9px; border: 1px solid var(--dt-line); border-radius: 8px; color: #91a9c5; background: rgba(1,7,15,.55); font: 9px/1.5 ui-monospace,monospace; overflow-wrap: anywhere; }
+.dt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.dt-button { min-height: 35px; padding: 8px 9px; border: 1px solid var(--dt-line); border-radius: 8px; color: #dbe9fa; background: rgba(255,255,255,.055); font-size: 9px !important; font-weight: 900 !important; letter-spacing: .045em; cursor: pointer; }
+.dt-button:hover { background: rgba(255,255,255,.1); }
+.dt-button.primary { color: #d9fff0; border-color: rgba(55,204,143,.32); background: rgba(16,132,87,.22); }
+.dt-button.danger { color: #ffd8dd; border-color: rgba(255,104,120,.32); background: rgba(155,35,52,.22); }
+.dt-button.secondary { color: #d5e9ff; border-color: rgba(98,181,255,.23); background: rgba(44,104,160,.14); }
+.dt-button.full { width: 100%; margin-top: 9px; }
+.dt-button:disabled { opacity: .5; cursor: wait; }
+.dt-rule-note { display: grid; gap: 3px; margin-top: 9px; padding: 9px 10px; border-left: 2px solid rgba(98,181,255,.58); border-radius: 0 7px 7px 0; color: #8da1b8; background: rgba(39,97,148,.1); font-size: 9px; }
+.dt-rule-note b { color: #bad7f4; font-size: 9px; }
+.dt-divider { height: 1px; margin: 14px 0; background: var(--dt-line); }
+.dt-device-card { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--dt-line); border-radius: 10px; background: var(--dt-card); }
+.dt-device-mark { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: #91caff; background: rgba(65,146,217,.16); font-size: 18px; }
+.dt-device-card div { display: flex; min-width: 0; flex-direction: column; }
+.dt-device-card strong { overflow: hidden; color: #e6f0fc; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dt-device-card small { margin-top: 2px; color: #839ab4; font-size: 9px; }
+.dt-subhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 10px 0 7px; }
+.dt-subhead strong { color: #dbe9f9; font-size: 10px; letter-spacing: .04em; }
+.dt-subhead span { color: #748ba5; font: 8px ui-monospace,monospace; }
+.dt-axis-list { display: grid; gap: 5px; }
+.dt-axis-row { display: grid; grid-template-columns: 43px 1fr 42px; align-items: center; gap: 8px; padding: 5px 7px; border: 1px solid rgba(145,166,194,.1); border-radius: 7px; background: rgba(255,255,255,.025); }
+.dt-axis-row.mapped { border-color: rgba(98,181,255,.28); background: rgba(38,101,160,.1); }
+.dt-axis-row > span, .dt-axis-row > strong { color: #93a7bf; font: 9px ui-monospace,monospace; }
+.dt-axis-row > strong { text-align: right; color: #d4e5f7; }
+.dt-axis-track { position: relative; height: 7px; border-radius: 7px; background: linear-gradient(90deg,rgba(255,255,255,.04) 49.5%,rgba(255,255,255,.2) 50%,rgba(255,255,255,.04) 50.5%); }
+.dt-axis-track b { position: absolute; top: 0; height: 100%; border-radius: 7px; background: #4da8ef; }
+.dt-axis-track i { position: absolute; top: -3px; z-index: 1; width: 2px; height: 13px; background: #f2f8ff; transform: translateX(-1px); }
+.dt-button-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 5px; }
+.dt-button-state { display: grid; place-items: center; gap: 3px; padding: 5px 2px; border: 1px solid var(--dt-line); border-radius: 6px; color: #8295ad; background: rgba(255,255,255,.025); font: 8px ui-monospace,monospace; }
+.dt-button-state i { width: 7px; height: 7px; border-radius: 50%; background: #435267; }
+.dt-button-state.pressed { color: #c8ffdf; border-color: rgba(66,223,160,.36); background: rgba(23,139,89,.17); }
+.dt-button-state.pressed i { background: #45e1a2; box-shadow: 0 0 8px rgba(69,225,162,.7); }
+.dt-hat-list { margin-top: 6px; color: #8297af; font: 8px ui-monospace,monospace; }
+.dt-empty { padding: 9px; border: 1px dashed rgba(145,166,194,.2); border-radius: 7px; color: #748ba5; font-size: 9px; }
+.dt-mapping-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
+.dt-mapping-grid label { display: grid; gap: 5px; color: #8ea2ba; font-size: 8px; font-weight: 800; letter-spacing: .05em; }
+.dt-mapping-grid select { min-width: 0; width: 100%; padding: 7px 5px; border: 1px solid var(--dt-line); border-radius: 6px; color: #d9e9fb; background: #132238; font-size: 10px; }
+.dt-check-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; color: #a9bbcf; font-size: 9px; }
+.dt-check-row label { display: flex; align-items: center; gap: 6px; }
+.dt-check-row input { accent-color: #56b6ff; }
+.dt-check-row span { color: #9ccfff; font: 9px ui-monospace,monospace; }
+.dt-calibration { margin-top: 9px; padding: 9px; border: 1px solid var(--dt-line); border-radius: 9px; background: rgba(255,255,255,.025); }
+.dt-calibration-head { display: flex; justify-content: space-between; gap: 6px; color: #d8e7f7; font-size: 9px; }
+.dt-calibration-head span { color: #ffc66d; font: 800 8px ui-monospace,monospace; }
+.dt-calibration-head span.ready { color: #75e7b7; }
+.dt-calibration-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.dt-calibration-actions button { padding: 7px 5px; border: 1px solid rgba(98,181,255,.22); border-radius: 6px; color: #cde6ff; background: rgba(40,105,165,.14); font-size: 8px !important; font-weight: 800 !important; cursor: pointer; }
+.dt-pedal-track { height: 5px; margin: 9px 0 5px; overflow: hidden; border-radius: 5px; background: rgba(255,255,255,.09); }
+.dt-pedal-track i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#40d89f,#7ccfff); transition: width .1s linear; }
+.dt-calibration small { color: #7f95ae; font-size: 8px; }
+.dt-keyboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.dt-key-item { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px; border: 1px solid var(--dt-line); border-radius: 7px; background: rgba(255,255,255,.025); }
+.dt-key-item kbd { min-width: 55px; padding: 4px 5px; border: 1px solid rgba(161,181,207,.19); border-radius: 5px; color: #b9cce0; background: #17263a; text-align: center; font: 800 8px ui-monospace,monospace; }
+.dt-key-item span { overflow: hidden; color: #8fa4bd; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.dt-key-item.active { border-color: rgba(66,223,160,.42); background: rgba(18,132,84,.15); }
+.dt-key-item.active kbd { color: #d3ffe9; border-color: rgba(66,223,160,.36); background: rgba(20,137,88,.2); }
+.dt-key-item.active span { color: #a9f6d1; }
+.dt-footer { display: flex; justify-content: space-between; gap: 8px; padding: 8px 13px; border-top: 1px solid var(--dt-line); color: #617892; background: rgba(2,7,14,.55); font: 7px ui-monospace,monospace; letter-spacing: .07em; }
+#drowsy-alert { display: none; position: fixed; z-index: 10001; top: 65px; left: 50%; transform: translateX(-50%); width: min(620px,calc(100vw - 24px)); padding: 13px 18px; border: 2px solid #ef4444; border-radius: 12px; color: #fff; background: rgba(65,5,8,.95); text-align: center; font: 800 clamp(13px,2vw,18px)/1.35 system-ui,sans-serif; letter-spacing: .06em; box-shadow: 0 8px 32px rgba(127,29,29,.35); pointer-events: none; }
+#drowsy-alert.show { display: block; animation: dtAlertPulse 1s ease-in-out infinite alternate; }
+#drowsy-alert.warning { border-color: #f59e0b; background: rgba(69,39,7,.95); }
+@keyframes dtAlertPulse { from { box-shadow: 0 0 8px rgba(239,68,68,.2); } to { box-shadow: 0 0 26px rgba(239,68,68,.55); } }
+.dt-view, .dt-panel, .dt-panel * { scrollbar-width: thin; }
+@media (max-width: 620px) {
+  #driver-tools { top: 58px; right: 8px; }
+  .dt-panel { width: min(390px, calc(100vw - 16px)); height: min(760px, calc(100vh - 120px)); max-height: calc(100vh - 120px); }
+  .dt-view { padding: 11px; }
+  #drowsy-alert { top: 58px; }
+}
+@media (prefers-reduced-motion: reduce) { .dt-panel.open, #drowsy-alert.show { animation: none; } }
+.dt-small-button { width: 100%; margin-top: 7px; padding: 7px 8px; border: 1px solid rgba(98,181,255,.2); border-radius: 7px; color: #b9dcff; background: rgba(40,105,165,.12); font-size: 8px !important; font-weight: 800 !important; cursor: pointer; }
+.dt-small-button:hover { background: rgba(40,105,165,.22); }
+.dt-calibration.disabled { opacity: .55; border-style: dashed; pointer-events: none; }
+.dt-mapping-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.dt-button-state.mapped:not(.pressed) { border-color: rgba(98,181,255,.3); background: rgba(38,101,160,.1); }
+
+/* The driver panel sits below the simulator's top utility bar, leaving the
+   camera, graphics and pause controls clickable. */
+.dt-field { display:grid; gap:5px; margin:10px 0; color:#b9cde3; font-size:9px; font-weight:800; letter-spacing:.04em; }
+.dt-field select { width:100%; min-height:36px; padding:7px 9px; border:1px solid rgba(98,181,255,.25); border-radius:8px; color:#eaf4ff; background:#111f31; outline:none; }
+.dt-field select:focus { border-color:rgba(98,181,255,.8); box-shadow:0 0 0 2px rgba(98,181,255,.12); }
+.dt-safety-list { display:grid; gap:7px; }
+.dt-safety-list > div { display:grid; gap:2px; padding:8px 9px; border:1px solid var(--dt-line); border-radius:8px; background:rgba(255,255,255,.025); }
+.dt-safety-list b { color:#dcecff; font-size:9px; }
+.dt-safety-list span { color:#8ea3bb; font-size:9px; }
+@media (max-height: 580px) { #driver-tools { top:54px; } .dt-panel { height:min(600px, calc(100vh - 114px)); max-height:calc(100vh - 114px); } }
