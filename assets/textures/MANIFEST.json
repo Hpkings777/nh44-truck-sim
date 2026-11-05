@@ -1,0 +1,82 @@
+[
+ {
+  "author": "Amal Kumar",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/worn_asphalt/worn_asphalt_diff_1k.jpg",
+  "file": "asphalt_road.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "worn_asphalt",
+  "source_url": "https://polyhaven.com/a/worn_asphalt"
+ },
+ {
+  "author": "Charlotte Baglioni",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/withered_grass/withered_grass_diff_1k.jpg",
+  "file": "dry_grass.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "withered_grass",
+  "source_url": "https://polyhaven.com/a/withered_grass"
+ },
+ {
+  "author": "Rob Tuytel",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sand_01/sand_01_diff_1k.jpg",
+  "file": "dirt_sand.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "sand_01",
+  "source_url": "https://polyhaven.com/a/sand_01"
+ },
+ {
+  "author": "Rob Tuytel",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete/concrete_diff_1k.jpg",
+  "file": "concrete.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "concrete",
+  "source_url": "https://polyhaven.com/a/concrete"
+ },
+ {
+  "author": "Rob Tuytel",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_01/bark_brown_01_diff_1k.jpg",
+  "file": "bark.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "bark_brown_01",
+  "source_url": "https://polyhaven.com/a/bark_brown_01"
+ },
+ {
+  "author": "Jenelle van Heerden (Processing), Dimitrios Savva (Photography)",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/corrugated_iron/corrugated_iron_diff_1k.jpg",
+  "file": "steel_guardrail.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "corrugated_iron",
+  "source_url": "https://polyhaven.com/a/corrugated_iron"
+ },
+ {
+  "author": "Rob Tuytel",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_ground/rock_ground_diff_1k.jpg",
+  "file": "rocky_ground.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "rock_ground",
+  "source_url": "https://polyhaven.com/a/rock_ground"
+ },
+ {
+  "author": "Rob Tuytel",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/red_brick/red_brick_diff_1k.jpg",
+  "file": "brick.jpg",
+  "license": "CC0",
+  "polyhaven_texture": "red_brick",
+  "source_url": "https://polyhaven.com/a/red_brick"
+ },
+ {
+  "author": "ambientCG",
+  "download_url": "https://ambientcg.com/get?file=Fabric086_1K-JPG.zip",
+  "file": "fabric_seat.jpg",
+  "license": "CC0",
+  "ambientcg_texture": "Fabric086",
+  "source_url": "https://ambientcg.com/a/Fabric086"
+ },
+ {
+  "author": "ambientCG",
+  "download_url": "https://ambientcg.com/get?file=Fabric084_1K-JPG.zip",
+  "file": "fabric_curtain.jpg",
+  "license": "CC0",
+  "ambientcg_texture": "Fabric084",
+  "source_url": "https://ambientcg.com/a/Fabric084"
+ }
+]

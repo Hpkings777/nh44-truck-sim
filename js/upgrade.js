@@ -10,7 +10,7 @@
   /* Phased rollout: Phase 1 = sun/bloom fix (WS4) + impeccable UI (WS1) only.
    * Phase 2 builders (trucks, maps, photo textures, cabin) stay inert until
    * window.__NH44_PHASE is set to 2 BEFORE upgrade.js runs. */
-  var PHASE = (window.__NH44_PHASE === 2) ? 2 : 1;
+  var PHASE = (window.__NH44_PHASE === 1) ? 1 : 2;
   function log() { try { console.log.apply(console, [LOG].concat([].slice.call(arguments))); } catch (e) {} }
 
   function whenReady(cb) {
@@ -59,6 +59,102 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 2b. Real-asset pack loader (Phase 2): GLBs are refactored OFFLINE  */
+  /* via tools/glb2nh44.py into JSON + extracted textures, then rebuilt */
+  /* here with the game's own harvested constructors — no GLTFLoader,   */
+  /* no second THREE instance, no version matching.                     */
+  /* ------------------------------------------------------------------ */
+  function deriveAssetCtors(T, sim) {
+    try {
+      var box = T.BoxGeometry || T.PlaneGeometry;
+      if (box && box.prototype) {
+        var parent = Object.getPrototypeOf(box.prototype);
+        if (parent && parent.constructor) T.BufferGeometry = parent.constructor;
+      }
+    } catch (e) {}
+    try {
+      sim.scene.traverse(function (o) {
+        if (!T.Float32BufferAttribute && o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {
+          T.Float32BufferAttribute = o.geometry.attributes.position.constructor;
+        }
+      });
+    } catch (e) {}
+    return T;
+  }
+  function b64ToArray(b64, Type) {
+    var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n);
+    for (var i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
+    return new Type(bytes.buffer);
+  }
+  function loadImageTexture(T, url) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var t = new T.CanvasTexture(img);
+        t.wrapS = 1000; t.wrapT = 1000; // RepeatWrapping
+        if ('colorSpace' in t) t.colorSpace = 'srgb';
+        t.anisotropy = 4;
+        t.needsUpdate = true;
+        resolve(t);
+      };
+      img.onerror = function () { log('texture failed:', url); resolve(null); };
+      img.src = url;
+    });
+  }
+  /* Fetch a converted asset pack (assets/models/<name>.json) and rebuild
+   * it as a THREE.Group. opts: {scale, position:[x,y,z], rotationY}. */
+  function loadAssetPack(T, packUrl, opts) {
+    opts = opts || {};
+    return fetch(packUrl).then(function (r) { return r.json(); }).then(function (pack) {
+      var base = packUrl.slice(0, packUrl.lastIndexOf('/') + 1);
+      var texUrls = {};
+      pack.meshes.forEach(function (m) { if (m.material && m.material.map) texUrls[m.material.map] = base + m.material.map; });
+      var texKeys = Object.keys(texUrls);
+      return Promise.all(texKeys.map(function (k) { return loadImageTexture(T, texUrls[k]); })).then(function (texs) {
+        var texMap = {};
+        texKeys.forEach(function (k, i) { texMap[k] = texs[i]; });
+        var group = new T.Group();
+        group.name = 'nh44asset:' + (pack.name || 'pack');
+        pack.meshes.forEach(function (m) {
+          var geo = new T.BufferGeometry();
+          geo.setAttribute('position', new T.Float32BufferAttribute(b64ToArray(m.positions_b64, Float32Array), 3));
+          geo.setAttribute('normal', new T.Float32BufferAttribute(b64ToArray(m.normals_b64, Float32Array), 3));
+          if (m.uvs_b64) geo.setAttribute('uv', new T.Float32BufferAttribute(b64ToArray(m.uvs_b64, Float32Array), 2));
+          var idxArr = m.index32 ? b64ToArray(m.indices_b64, Uint32Array) : b64ToArray(m.indices_b64, Uint16Array);
+          geo.setIndex(Array.from(idxArr));
+          var mm = m.material || {};
+          var mat = new T.MeshStandardMaterial({ metalness: mm.metalness || 0, roughness: (mm.roughness == null ? 0.9 : mm.roughness) });
+          if (mm.color) mat.color.setRGB(mm.color[0], mm.color[1], mm.color[2]);
+          if (mm.emissive && (mm.emissive[0] || mm.emissive[1] || mm.emissive[2])) mat.emissive.setRGB(mm.emissive[0], mm.emissive[1], mm.emissive[2]);
+          if (mm.map && texMap[mm.map] && m.uvs_b64) mat.map = texMap[mm.map];
+          if (mm.doubleSided) mat.side = 2; // DoubleSide
+          var mesh = new T.Mesh(geo, mat);
+          mesh.name = m.name || 'part';
+          group.add(mesh);
+        });
+        if (opts.scale) group.scale.setScalar(opts.scale);
+        if (opts.position) group.position.set(opts.position[0], opts.position[1], opts.position[2]);
+        if (opts.rotationY) group.rotation.y = opts.rotationY;
+        log('asset pack loaded:', pack.name, pack.meshes.length, 'parts,', pack.total_tris, 'tris');
+        return group;
+      });
+    });
+  }
+
+  /* Pack cache: load each real-asset pack once, hand out clones (geometry +
+   * material shared — cheap) so traffic/trees/buildings can repeat it. */
+  var packCache = {};
+  function loadPackCached(T, packUrl) {
+    if (packCache[packUrl]) return packCache[packUrl];
+    var p = loadAssetPack(T, packUrl, {}).catch(function (e) { log('pack failed:', packUrl, e); return null; });
+    packCache[packUrl] = p;
+    return p;
+  }
+  function clonePack(group) {
+    return group ? group.clone() : null;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 2. Procedural canvas textures (seat fabric, curtains, signs, ...)   */
   /* ------------------------------------------------------------------ */
   function makeCanvas(w, h, draw) {
@@ -76,42 +172,6 @@
     t.needsUpdate = true;
     return t;
   }
-  function patternSeatCover() {
-    return makeCanvas(256, 256, function (g, w, h) {
-      g.fillStyle = '#7f1d1d'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#f59e0b'; g.lineWidth = 5;
-      for (var y = 0; y <= h; y += 64) for (var x = 0; x <= w; x += 64) {
-        g.beginPath(); g.moveTo(x + 32, y); g.lineTo(x + 64, y + 32); g.lineTo(x + 32, y + 64); g.lineTo(x, y + 32); g.closePath(); g.stroke();
-        g.fillStyle = '#fbbf24'; g.beginPath(); g.arc(x + 32, y + 32, 6, 0, 7); g.fill();
-      }
-      g.fillStyle = 'rgba(0,0,0,0.18)';
-      for (var i = 0; i < 300; i++) g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-    });
-  }
-  function patternCurtain() {
-    return makeCanvas(256, 256, function (g, w, h) {
-      g.fillStyle = '#991b1b'; g.fillRect(0, 0, w, h);
-      for (var x = 0; x < w; x += 32) {
-        g.fillStyle = (x / 32) % 2 ? '#f8fafc' : '#dc2626';
-        g.fillRect(x, 0, 16, h);
-      }
-      g.fillStyle = 'rgba(255,255,255,0.12)';
-      for (var x = 0; x < w; x += 16) g.fillRect(x, 0, 3, h);
-      g.fillStyle = '#f59e0b'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10);
-    });
-  }
-  function patternWheelCover() {
-    return makeCanvas(256, 256, function (g, w, h) {
-      g.fillStyle = '#450a0a'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#b45309'; g.lineWidth = 3;
-      for (var x = 0; x < w; x += 32) {
-        g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 16, h); g.stroke();
-        g.beginPath(); g.moveTo(x + 16, 0); g.lineTo(x, h); g.stroke();
-      }
-      g.fillStyle = 'rgba(0,0,0,0.25)';
-      for (var i = 0; i < 200; i++) g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-    });
-  }
   function patternTruckArt() {
     return makeCanvas(512, 128, function (g, w, h) {
       g.fillStyle = '#111827'; g.fillRect(0, 0, w, h);
@@ -119,28 +179,6 @@
       g.fillText('HORN OK PLEASE', w / 2, 58);
       g.fillStyle = '#f8fafc'; g.font = 'bold 26px sans-serif';
       g.fillText('USE DIPPER AT NIGHT  •  NH-44', w / 2, 102);
-    });
-  }
-  function photoFrameCanvas() {
-    return makeCanvas(128, 96, function (g, w, h) {
-      var grad = g.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, '#f59e0b'); grad.addColorStop(1, '#b45309');
-      g.fillStyle = grad; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#fef3c7'; g.beginPath(); g.arc(38, 44, 16, 0, 7); g.fill();
-      g.beginPath(); g.arc(78, 52, 20, 0, 7); g.fill();
-      g.fillStyle = '#78350f'; g.fillRect(24, 66, 80, 6);
-    });
-  }
-  function windowSignCanvas() {
-    return makeCanvas(512, 256, function (g, w, h) {
-      g.fillStyle = '#1e3a8a'; g.fillRect(0, 0, w, h);
-      for (var r = 0; r < 4; r++) for (var c = 0; c < 8; c++) {
-        g.fillStyle = (r + c) % 3 ? '#fde68a' : '#93c5fd';
-        g.fillRect(14 + c * 60, 14 + r * 56, 44, 40);
-      }
-      g.fillStyle = 'rgba(2,6,23,0.55)'; g.fillRect(0, h - 52, w, 52);
-      g.fillStyle = '#fff'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center';
-      g.fillText('PUNJAB  •  HARYANA  •  DELHI', w / 2, h - 16);
     });
   }
   function containerLiveryCanvas(style) {
@@ -283,144 +321,90 @@
   /* 6. Cabin decor (WS6) — real Indian truck cabin                     */
   /* ------------------------------------------------------------------ */
   var cabinRefs = {};
+  /* Cabin dressing (WS6) — REAL assets only.
+   * The base game's own cabin rig (dashboard, working gauges, steering
+   * wheel, mirrors, seats, gear lever) stays untouched — it is the game's
+   * own detailed model and it already works. What changes here:
+   *  - seat covers / headrests / door inserts: REAL photo fabric
+   *    (ambientCG Fabric086, CC0) on plain surfaces — the visual IS the photo.
+   *  - side curtains: REAL photo fabric (ambientCG Fabric084, CC0).
+   *  - steering-wheel cover: same real fabric on the wheel rim.
+   *  - sun-visor truck-art sticker: 2D typography decal (lettering, not a model).
+   *  - interior indicator tell-tales: functional lights (part of the working
+   *    cabin — they blink with the real indicator state).
+   * DROPPED per the owner asset rule (procedural 3D props with no real
+   * equivalent sourced): hanging tassel, dashboard idol, photo frame,
+   * overhead storage, sleeper berth + pillow, gear knob, wipers, chrome
+   * door handles. The base cabin's own seats/dashboard/wheel remain.
+   * The real steering-wheel pack (assets/models/steering_wheel.json) is
+   * intentionally NOT swapped in: the base wheel is rigged to the live
+   * steering input and already detailed; swapping risks the rig. */
   function buildCabinDecor(sim, T) {
     var cab = sim.playerRig && sim.playerRig.cabinSuspensionGroup;
-    if (!cab || !T.BoxGeometry || !T.CylinderGeometry || !T.TorusGeometry || !T.PlaneGeometry) { log('cabin decor skipped: missing constructors'); return; }
+    if (!cab || !T.PlaneGeometry || !T.TorusGeometry) { log('cabin decor skipped: missing constructors'); return; }
     var g = new T.Group();
     g.name = 'NH44CabinDecor';
-
-    var seatTex = canvasTexture(T, patternSeatCover());
-    var curtainTex = canvasTexture(T, patternCurtain());
-    var frameTex = canvasTexture(T, photoFrameCanvas());
     var artTex = canvasTexture(T, patternTruckArt());
 
-    /* --- hanging tassel from overhead console (sways in rAF) --- */
-    var tassel = new T.Group();
-    tassel.add(place(cyl(T, 0.008, 0.008, 0.22, mat(T, 0x78350f, { roughness: 0.9 })), 0, -0.11, 0));
-    var beadM = mat(T, 0xdc2626, { roughness: 0.35 });
-    var goldM = mat(T, 0xf59e0b, { roughness: 0.3, metalness: 0.7 });
-    [-0.24, -0.29, -0.34].forEach(function (y, i) {
-      var bead = new T.Mesh(sphereGeo(T, 0.022, 10, 8), i % 2 ? goldM : beadM);
-      tassel.add(place(bead, 0, y, 0));
-    });
-    var fringe = new T.Mesh(new T.ConeGeometry(0.045, 0.16, 10), mat(T, 0xea580c, { roughness: 0.9 }));
-    tassel.add(place(fringe, 0, -0.45, 0, Math.PI, 0, 0));
-    tassel.position.set(0, 3.02, -2.28);
-    g.add(tassel);
-    cabinRefs.tassel = tassel;
+    function photoTex(url, repeat) {
+      return loadImageTexture(T, url).then(function (t) {
+        if (t && repeat) { t.repeat.set(repeat[0], repeat[1]); }
+        return t;
+      });
+    }
+    Promise.all([
+      photoTex('assets/textures/fabric_seat.jpg', [1, 1]),
+      photoTex('assets/textures/fabric_curtain.jpg', [1, 1])
+    ]).then(function (texs) {
+      var seatTex = texs[0], curtainTex = texs[1];
+      if (!seatTex || !curtainTex) { log('cabin fabrics failed to load'); return; }
+      /* --- patterned seat covers (driver + passenger) — real fabric photo --- */
+      [-0.58, 0.58].forEach(function (x) {
+        var cover = new T.Mesh(new T.PlaneGeometry(0.56, 0.62), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
+        cover.position.set(x, 1.98, -1.13);
+        cover.rotation.x = -0.12;
+        g.add(cover);
+        var headrest = new T.Mesh(new T.PlaneGeometry(0.3, 0.16), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
+        headrest.position.set(x, 2.32, -1.06);
+        headrest.rotation.x = -0.12;
+        g.add(headrest);
+      });
+      /* --- curtains on both side windows (wavy) — real fabric photo --- */
+      [-1, 1].forEach(function (side) {
+        var geo = new T.PlaneGeometry(0.52, 0.85, 8, 1);
+        var pos = geo.attributes.position;
+        for (var i = 0; i < pos.count; i++) {
+          var px = pos.getX(i);
+          pos.setZ(i, Math.sin((px + 0.26) * 22) * 0.02);
+        }
+        geo.computeVertexNormals();
+        var curtain = new T.Mesh(geo, new T.MeshStandardMaterial({ map: curtainTex, side: 2, roughness: 0.95 }));
+        curtain.position.set(side * 1.18, 2.62, -1.55);
+        curtain.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+        g.add(curtain);
+      });
+      /* --- door-panel inserts — real fabric photo --- */
+      [-1, 1].forEach(function (side) {
+        var insert = new T.Mesh(new T.PlaneGeometry(0.3, 0.5), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
+        insert.position.set(side * 1.15, 1.72, -1.85);
+        insert.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+        g.add(insert);
+      });
+      /* --- steering-wheel cover — real fabric photo over the existing wheel --- */
+      var wheel = sim.playerRig.steeringWheelGroup;
+      if (wheel) {
+        var cover = new T.Mesh(new T.TorusGeometry(0.235, 0.03, 10, 36), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.9 }));
+        wheel.add(cover);
+      }
+      log('cabin dressing built (real fabric photos):', g.children.length, 'surfaces');
+    }).catch(function (e) { log('cabin fabrics error', e); });
 
-    /* --- dashboard idol (stylised gold murti) + photo frame --- */
-    var idol = new T.Group();
-    idol.add(place(cyl(T, 0.055, 0.065, 0.02, mat(T, 0x7c2d12, { roughness: 0.7 })), 0, 0.01, 0));
-    idol.add(place(new T.Mesh(sphereGeo(T, 0.038, 12, 10), goldM), 0, 0.055, 0));
-    idol.add(place(new T.Mesh(sphereGeo(T, 0.024, 10, 8), goldM), 0, 0.105, 0));
-    idol.add(place(cyl(T, 0.008, 0.012, 0.05, goldM), 0.028, 0.095, 0.01, 0, 0, -0.5));
-    idol.position.set(-0.28, 2.0, -2.32);
-    g.add(idol);
-    var frame = new T.Mesh(new T.PlaneGeometry(0.16, 0.12), new T.MeshBasicMaterial({ map: frameTex }));
-    frame.position.set(-0.62, 2.06, -2.3); frame.rotation.x = -0.18;
-    g.add(frame);
-
-    /* --- truck-art sticker on the sun-visor strip --- */
+    /* --- truck-art sticker on the sun-visor strip (2D typography decal) --- */
     var art = new T.Mesh(new T.PlaneGeometry(0.5, 0.125), new T.MeshBasicMaterial({ map: artTex, transparent: true }));
     art.position.set(0, 2.92, -2.16); art.rotation.x = -0.08;
     g.add(art);
 
-    /* --- curtains on both side windows (wavy) --- */
-    [-1, 1].forEach(function (side) {
-      var geo = new T.PlaneGeometry(0.52, 0.85, 8, 1);
-      var pos = geo.attributes.position;
-      for (var i = 0; i < pos.count; i++) {
-        var px = pos.getX(i);
-        pos.setZ(i, Math.sin((px + 0.26) * 22) * 0.02);
-      }
-      geo.computeVertexNormals();
-      var curtain = new T.Mesh(geo, new T.MeshStandardMaterial({ map: curtainTex, side: 2, roughness: 0.95 }));
-      curtain.position.set(side * 1.18, 2.62, -1.55);
-      curtain.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
-      g.add(curtain);
-      var rail = cyl(T, 0.012, 0.012, 0.56, mat(T, 0x94a3b8, { metalness: 0.6, roughness: 0.4 }), 8);
-      rail.rotation.x = Math.PI / 2;
-      rail.position.set(side * 1.18, 3.08, -1.55);
-      g.add(rail);
-    });
-
-    /* --- patterned seat covers (driver + passenger) --- */
-    [-0.58, 0.58].forEach(function (x) {
-      var cover = new T.Mesh(new T.PlaneGeometry(0.56, 0.62), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
-      cover.position.set(x, 1.98, -1.13);
-      cover.rotation.x = -0.12;
-      g.add(cover);
-      var headrest = new T.Mesh(new T.PlaneGeometry(0.3, 0.16), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
-      headrest.position.set(x, 2.32, -1.06);
-      headrest.rotation.x = -0.12;
-      g.add(headrest);
-    });
-
-    /* --- overhead storage + sleeper berth --- */
-    var storeM = mat(T, 0x1e293b, { roughness: 0.8 });
-    var storage = box(T, 1.7, 0.26, 0.42, storeM);
-    storage.position.set(0, 3.18, -2.3);
-    g.add(storage);
-    [-0.45, 0.45].forEach(function (x) {
-      var door = box(T, 0.7, 0.18, 0.02, mat(T, 0x334155, { roughness: 0.7 }));
-      door.position.set(x, 3.18, -2.08);
-      g.add(door);
-    });
-    var berthM = mat(T, 0x7f1d1d, { roughness: 0.95 });
-    var berth = box(T, 1.9, 0.14, 0.72, berthM);
-    berth.position.set(0, 1.32, -0.42);
-    g.add(berth);
-    var pillow = box(T, 0.5, 0.1, 0.3, mat(T, 0xf8fafc, { roughness: 0.95 }));
-    pillow.position.set(-0.6, 1.43, -0.42);
-    g.add(pillow);
-    var blanket = new T.Mesh(new T.PlaneGeometry(1.0, 0.7), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
-    blanket.position.set(0.35, 1.4, -0.42);
-    blanket.rotation.x = -Math.PI / 2;
-    g.add(blanket);
-
-    /* --- steering-wheel cover (patterned wrap over the existing wheel) --- */
-    var wheel = sim.playerRig.steeringWheelGroup;
-    var wheelTex = canvasTexture(T, patternWheelCover());
-    if (wheel) {
-      var cover = new T.Mesh(new T.TorusGeometry(0.235, 0.03, 10, 36), new T.MeshStandardMaterial({ map: wheelTex, roughness: 0.9 }));
-      wheel.add(cover);
-      var hornPad = cyl(T, 0.075, 0.075, 0.02, mat(T, 0x111827, { roughness: 0.6 }), 20);
-      hornPad.rotation.x = Math.PI / 2;
-      hornPad.position.set(0, 0, 0.028);
-      wheel.add(hornPad);
-      cabinRefs.hornPad = hornPad;
-    }
-
-    /* --- gear knob upgrade + indicator stalks --- */
-    var knob = new T.Mesh(sphereGeo(T, 0.055, 14, 10), mat(T, 0x111827, { roughness: 0.35 }));
-    knob.position.set(0.18, 1.92, -1.58);
-    g.add(knob);
-    var boot = new T.Mesh(new T.ConeGeometry(0.05, 0.14, 12), mat(T, 0x1f2937, { roughness: 0.95 }));
-    boot.position.set(0.18, 1.82, -1.58);
-    g.add(boot);
-
-    /* --- parked wipers on the windshield base --- */
-    [-0.45, 0.45].forEach(function (x) {
-      var wiper = box(T, 0.5, 0.025, 0.02, mat(T, 0x0f172a, { roughness: 0.6 }));
-      wiper.position.set(x, 1.62, -2.6);
-      wiper.rotation.z = x > 0 ? 0.5 : -0.5;
-      wiper.rotation.x = -0.15;
-      g.add(wiper);
-    });
-
-    /* --- door-panel inserts + chrome handles --- */
-    [-1, 1].forEach(function (side) {
-      var insert = new T.Mesh(new T.PlaneGeometry(0.3, 0.5), new T.MeshStandardMaterial({ map: seatTex, roughness: 0.95 }));
-      insert.position.set(side * 1.15, 1.72, -1.85);
-      insert.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
-      g.add(insert);
-      var handle = box(T, 0.03, 0.03, 0.22, mat(T, 0xcbd5e1, { metalness: 0.8, roughness: 0.3 }));
-      handle.position.set(side * 1.14, 1.98, -1.85);
-      g.add(handle);
-    });
-
-    /* --- interior indicator tell-tales on the cluster --- */
+    /* --- interior indicator tell-tales on the cluster (functional lights) --- */
     var indL = new T.Mesh(new T.PlaneGeometry(0.05, 0.05), new T.MeshBasicMaterial({ color: 0x22c55e }));
     indL.position.set(0.3, 2.12, -2.19);
     var indR = indL.clone();
@@ -430,7 +414,7 @@
     cabinRefs.indL = indL; cabinRefs.indR = indR;
 
     cab.add(g);
-    log('cabin decor built (' + g.children.length + ' nodes)');
+    log('cabin decor built (real fabrics loading async)');
   }
 
   /* ------------------------------------------------------------------ */
@@ -518,25 +502,23 @@
       sim.fogColor.setHex(0x9db8c4); sim.linearFog.near = 280; sim.linearFog.far = 950;
       if (sim.skyUniforms) { sim.skyUniforms.turbidity.value = 3.0; sim.skyUniforms.rayleigh.value = 1.5; }
       o.treeMats.forEach(function (t) { t.mat.color.setHex(0x1d4d2b); });
-      // pines: the game's trees are merged BufferGeometry (not swappable),
-      // so plant a pine belt along both shoulders instead.
-      for (var p = 0; p < 44; p++) {
-        var px = (p % 2 ? 1 : -1) * (26 + ((p * 53) % 64));
-        var pz = -180 - p * 92 - ((p * 37) % 50);
-        var ph = 4.5 + ((p * 29) % 30) / 10;
-        var pine = new T.Group();
-        var trunk = cyl(T, 0.14, 0.2, 1.2, mat(T, 0x5b3a1e, { roughness: 1 }), 8);
-        trunk.position.y = 0.6;
-        pine.add(trunk);
-        var cone1 = new T.Mesh(new T.ConeGeometry(1.5, ph * 0.62, 8), mat(T, 0x14532d, { roughness: 0.95 }));
-        cone1.position.y = 1.2 + ph * 0.31;
-        pine.add(cone1);
-        var cone2 = new T.Mesh(new T.ConeGeometry(1.05, ph * 0.5, 8), mat(T, 0x166534, { roughness: 0.95 }));
-        cone2.position.y = 1.2 + ph * 0.62;
-        pine.add(cone2);
-        pine.position.set(px, terrainLiftFor('foothills', px, pz), pz);
-        extras.add(pine);
-      }
+      // Real pines: the game's trees are merged BufferGeometry (not
+      // swappable), so plant a real pine belt (Poly Pizza / Quaternius
+      // pine_trees pack, CC0) along both shoulders instead.
+      loadPackCached(T, 'assets/models/pine_trees.json').then(function (pack) {
+        if (!pack || biomeExtras.group !== extras || biomeState.current !== 'foothills') return;
+        for (var p = 0; p < 24; p++) {
+          var px = (p % 2 ? 1 : -1) * (26 + ((p * 53) % 64));
+          var pz = -180 - p * 170 - ((p * 37) % 50);
+          var pine = clonePack(pack);
+          var s = 7 + ((p * 29) % 30) / 10;
+          pine.scale.setScalar(s);
+          pine.rotation.y = (p * 1.7) % 6.28;
+          pine.position.set(px, terrainLiftFor('foothills', px, pz), pz);
+          extras.add(pine);
+        }
+        log('foothills: 24 real pines planted');
+      }).catch(function (e) { log('foothills pines failed', e); });
       applyTerrainLift(sim, T, 'foothills');
       loadPhoto('assets/textures/rocky_ground.jpg').then(function (img) { if (sim.textures.terrainMap) swapTextureImage(sim.textures.terrainMap, img); }).catch(function () {});
     } else if (biome === 'coastal') {
@@ -561,14 +543,32 @@
       loadPhoto('assets/textures/dirt_sand.jpg').then(function (img) { if (sim.textures.terrainMap) swapTextureImage(sim.textures.terrainMap, img); }).catch(function () {});
     } else if (biome === 'city') {
       sim.fogColor.setHex(0xb8c0c8); sim.linearFog.near = 300; sim.linearFog.far = 1000;
-      var winTex = canvasTexture(T, windowSignCanvas());
-      for (var b = 0; b < 12; b++) {
-        var hgt = 9 + (b * 7) % 18;
-        var bld = box(T, 16, hgt, 14, new T.MeshStandardMaterial({ map: winTex, roughness: 0.9 }));
-        var side = b % 2 ? 1 : -1;
-        bld.position.set(side * (62 + (b * 13) % 70), hgt / 2, -350 - b * 330);
-        extras.add(bld);
-      }
+      // Real buildings (Quaternius/CC-BY packs — see ASSETS.md) along both
+      // shoulders, replacing the procedural boxes.
+      var citySpecs = [
+        { url: 'assets/models/big_building.json', scale: 2.0 },
+        { url: 'assets/models/shop.json', scale: 2.5 },
+        { url: 'assets/models/big_building.json', scale: 1.7 },
+        { url: 'assets/models/shop.json', scale: 2.2 },
+        { url: 'assets/models/big_building.json', scale: 2.3 },
+        { url: 'assets/models/shop.json', scale: 2.8 },
+        { url: 'assets/models/big_building.json', scale: 1.9 },
+        { url: 'assets/models/shop.json', scale: 2.0 }
+      ];
+      Promise.all(citySpecs.map(function (s) { return loadPackCached(T, s.url); })).then(function (packs) {
+        if (biomeExtras.group !== extras || biomeState.current !== 'city') return;
+        citySpecs.forEach(function (s, b) {
+          var pack = packs[b];
+          if (!pack) return;
+          var side = b % 2 ? 1 : -1;
+          var bld = clonePack(pack);
+          bld.scale.setScalar(s.scale);
+          bld.rotation.y = (b * 0.9) % 6.28;
+          bld.position.set(side * (62 + (b * 13) % 70), 0, -350 - b * 330);
+          extras.add(bld);
+        });
+        log('city: 8 real buildings placed');
+      }).catch(function (e) { log('city buildings failed', e); });
     }
     sim.scene.add(extras);
     biomeExtras.group = extras;
@@ -591,57 +591,50 @@
     });
     return best;
   }
+  /* Real-truck traffic (WS2): the pool's container lorries are replaced
+   * WHOLE by real Quaternius/CC-BY truck packs (Poly Pizza, CC0/CC-BY —
+   * see ASSETS.md). The original lorry meshes are hidden; the real truck
+   * is parented to the pool root so it inherits the game's traffic
+   * movement (position/heading) exactly. RotationY=PI: the packs face +Z
+   * natively, traffic drives -Z like the player. Packs load once and are
+   * cloned per lorry (geometry/material shared). */
+  var TRAFFIC_TRUCKS = [
+    { url: 'assets/models/truck_quaternius.json', scale: 1.3, rotY: Math.PI },
+    { url: 'assets/models/pickup_truck.json', scale: 1.3, rotY: Math.PI },
+    { url: 'assets/models/cargo_truck.json', scale: 1.2, rotY: Math.PI },
+    { url: 'assets/models/dump_truck.json', scale: 0.7, rotY: Math.PI },
+    { url: 'assets/models/tanker_truck.json', scale: 1.0, rotY: Math.PI / 2 }
+  ];
   function makeTrafficVariants(sim, T) {
     var list = sim.trafficMeshes || [];
-    if (!list.length || !T.CylinderGeometry) { log('traffic variants skipped'); return; }
-    // Only container lorries have a big BoxGeometry cargo box (vol ~43).
-    // The pool mixes lorries with cars/smaller vehicles — detect, don't guess.
+    if (!list.length) { log('traffic variants skipped: no pool'); return; }
     var lorries = [];
     list.forEach(function (entry, idx) {
       if (!entry || !entry.root) return;
       var container = biggestBox(entry.root);
       if (container) {
         var p = container.geometry.parameters;
-        if (p.width * p.height * p.depth > 30) lorries.push({ idx: idx, root: entry.root, container: container });
+        if (p.width * p.height * p.depth > 30) lorries.push({ idx: idx, root: entry.root });
       }
     });
     log('container lorries in pool:', lorries.length);
-    var kinds = ['tanker', 'tipper', 'box', 'tanker'];
-    lorries.forEach(function (L, n) {
-      if (n % 2 !== 0) return; // convert every other lorry — keep most as containers
-      var kind = kinds[(n / 2) % kinds.length];
-      var container = L.container;
-      var pos = container.position.clone();
-      var scl = container.scale.clone();
-      container.visible = false;
-      var grp = new T.Group();
-      grp.position.copy(pos); grp.scale.copy(scl);
-      if (kind === 'tanker') {
-        var tank = cyl(T, 1.05, 1.05, 5.6, mat(T, 0xd7dde3, { metalness: 0.75, roughness: 0.3 }), 20);
-        tank.rotation.x = Math.PI / 2;
-        tank.position.y = 0.35;
-        grp.add(tank);
-        var cap = cyl(T, 0.28, 0.28, 0.3, mat(T, 0x94a3b8, { metalness: 0.6, roughness: 0.4 }), 12);
-        cap.position.set(0, 1.5, 0);
-        grp.add(cap);
-      } else if (kind === 'tipper') {
-        var bed = box(T, 2.3, 1.1, 5.4, mat(T, 0xea580c, { roughness: 0.7 }));
-        bed.position.y = 0.2;
-        grp.add(bed);
-        var load = box(T, 2.0, 0.5, 5.0, mat(T, 0x78350f, { roughness: 1 }));
-        load.position.y = 0.95;
-        grp.add(load);
-      } else {
-        var body = box(T, 2.4, 2.4, 5.6, mat(T, 0xf8fafc, { roughness: 0.8 }));
-        body.position.y = 0.3;
-        grp.add(body);
-        var stripe = box(T, 2.42, 0.4, 5.62, mat(T, 0x2563eb, { roughness: 0.8 }));
-        stripe.position.y = 0.5;
-        grp.add(stripe);
-      }
-      container.parent.add(grp);
-      log('traffic variant:', kind, 'on pool idx', L.idx);
-    });
+    if (!lorries.length) return;
+    // preload all truck packs once, then swap them in
+    Promise.all(TRAFFIC_TRUCKS.map(function (t) { return loadPackCached(T, t.url); })).then(function (packs) {
+      lorries.forEach(function (L, n) {
+        var spec = TRAFFIC_TRUCKS[n % TRAFFIC_TRUCKS.length];
+        var pack = packs[n % packs.length];
+        if (!pack) { log('traffic truck pack missing for lorry', L.idx); return; }
+        // hide the whole original lorry (its meshes only — the root must
+        // stay visible so the real truck child inherits traffic movement)
+        L.root.traverse(function (o) { if (o.isMesh) o.visible = false; });
+        var truck = clonePack(pack);
+        truck.scale.setScalar(spec.scale);
+        truck.rotation.y = spec.rotY;
+        L.root.add(truck);
+        log('traffic real truck:', spec.url.split('/').pop(), 'on pool idx', L.idx);
+      });
+    }).catch(function (e) { log('traffic trucks failed', e); });
   }
   function findDhabaSpot(sim) {
     var spot = null;
@@ -660,46 +653,60 @@
     return spot || { x: -26, z: -1200 };
   }
   var T_Vector3 = null;
+  /* Parked showcase trucks (WS2): real packs parked by the dhaba. */
   function buildParkedTrucks(sim, T) {
     var spot = findDhabaSpot(sim);
     var g = new T.Group(); g.name = 'NH44ParkedTrucks';
-    function truck(x, z, ry, cabColor, kind) {
-      var t = new T.Group();
-      var cabM = mat(T, cabColor, { roughness: 0.35, metalness: 0.25 });
-      var cab = box(T, 2.3, 2.5, 1.9, cabM); cab.position.set(0, 1.55, 2.6); t.add(cab);
-      var shield = box(T, 2.0, 1.0, 0.06, new T.MeshPhysicalMaterial({ color: 0x0f172a, roughness: 0.1, metalness: 0.1 }));
-      shield.position.set(0, 1.95, 3.56); t.add(shield);
-      var grille = box(T, 1.8, 0.5, 0.08, mat(T, 0x1f2937, { roughness: 0.6 })); grille.position.set(0, 0.95, 3.56); t.add(grille);
-      var chassis = box(T, 2.0, 0.4, 7.6, mat(T, 0x1f2937, { roughness: 0.8 })); chassis.position.set(0, 0.75, -0.6); t.add(chassis);
-      if (kind === 'tanker') {
-        var tank = cyl(T, 1.0, 1.0, 5.2, mat(T, 0xd7dde3, { metalness: 0.75, roughness: 0.3 }), 18);
-        tank.rotation.x = Math.PI / 2; tank.position.set(0, 1.9, -1.2); t.add(tank);
-      } else if (kind === 'tipper') {
-        var bed = box(T, 2.2, 1.0, 5.0, mat(T, 0xea580c, { roughness: 0.7 })); bed.position.set(0, 1.5, -1.2); t.add(bed);
-      } else {
-        var body = box(T, 2.4, 2.4, 5.4, mat(T, 0xf8fafc, { roughness: 0.8 })); body.position.set(0, 2.0, -1.2); t.add(body);
-      }
-      var wheelM = mat(T, 0x111827, { roughness: 0.95 });
-      var hubM = mat(T, 0x9ca3af, { metalness: 0.7, roughness: 0.4 });
-      [[-1, 2.6], [1, 2.6], [-1, -0.6], [1, -0.6], [-1, -2.8], [1, -2.8]].forEach(function (w) {
-        var wheel = cyl(T, 0.5, 0.5, 0.35, wheelM, 14);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(w[0] * 1.0, 0.5, w[1]);
-        t.add(wheel);
-        var hub = cyl(T, 0.22, 0.22, 0.37, hubM, 10);
-        hub.rotation.z = Math.PI / 2;
-        hub.position.set(w[0] * 1.0, 0.5, w[1]);
-        t.add(hub);
+    var specs = [
+      { url: 'assets/models/tanker_truck.json', scale: 1.0, rotY: Math.PI / 2 + 0.08, dz: 0 },
+      { url: 'assets/models/dump_truck.json', scale: 0.7, rotY: Math.PI - 0.06, dz: -11 },
+      { url: 'assets/models/cargo_truck.json', scale: 1.2, rotY: Math.PI + 0.12, dz: -22 }
+    ];
+    Promise.all(specs.map(function (s) { return loadPackCached(T, s.url); })).then(function (packs) {
+      specs.forEach(function (s, i) {
+        var pack = packs[i];
+        if (!pack) return;
+        var truck = clonePack(pack);
+        truck.scale.setScalar(s.scale);
+        truck.rotation.y = s.rotY;
+        truck.position.set(spot.x - 4, 0, spot.z + s.dz);
+        g.add(truck);
       });
-      t.position.set(x, 0, z); t.rotation.y = ry;
-      return t;
-    }
-    g.add(truck(spot.x - 4, spot.z, 0.08, 0x1d4ed8, 'tanker'));
-    g.add(truck(spot.x - 4, spot.z - 11, -0.06, 0xea580c, 'tipper'));
-    g.add(truck(spot.x - 4, spot.z - 22, 0.12, 0x166534, 'box'));
-    sim.scene.add(g);
-    log('parked trucks at', JSON.stringify(spot));
+      sim.scene.add(g);
+      log('parked real trucks at', JSON.stringify(spot));
+    }).catch(function (e) { log('parked trucks failed', e); });
   }
+
+  /* Road furniture (WS5): real packs scattered along the corridor —
+   * striped barriers, cones, signs, lamp posts, traffic lights, plus one
+   * hero Poly Haven concrete-barrier scan near the dhaba. */
+  function loadRoadProps(sim, T) {
+    var g = new T.Group(); g.name = 'NH44RoadProps';
+    var jobs = [
+      { url: 'assets/models/traffic_barrier.json', count: 10, place: function (i) { return { x: (i % 2 ? 1 : -1) * (14 + (i * 7) % 10), z: -250 - i * 380, s: 1, ry: 0 }; } },
+      { url: 'assets/models/traffic_cone.json', count: 8, place: function (i) { return { x: -8 - (i % 3), z: -300 - i * 90, s: 1.4, ry: 0 }; } },
+      { url: 'assets/models/sign.json', count: 6, place: function (i) { return { x: (i % 2 ? 1 : -1) * 16, z: -400 - i * 620, s: 2, ry: (i % 2 ? 0.4 : -0.4) }; } },
+      { url: 'assets/models/streetlight.json', count: 6, place: function (i) { return { x: (i % 2 ? 1 : -1) * 12, z: -500 - i * 700, s: 2, ry: 0 }; } },
+      { url: 'assets/models/traffic_light.json', count: 2, place: function (i) { return { x: 10, z: -900 - i * 1800, s: 1, ry: 0 }; } }
+    ];
+    Promise.all(jobs.map(function (j) { return loadPackCached(T, j.url); })).then(function (packs) {
+      jobs.forEach(function (j, ji) {
+        var pack = packs[ji];
+        if (!pack) return;
+        for (var i = 0; i < j.count; i++) {
+          var p = j.place(i);
+          var prop = clonePack(pack);
+          prop.scale.setScalar(p.s);
+          prop.rotation.y = p.ry;
+          prop.position.set(p.x, 0, p.z);
+          g.add(prop);
+        }
+      });
+      sim.scene.add(g);
+      log('road props placed:', g.children.length);
+    }).catch(function (e) { log('road props failed', e); });
+  }
+
   var PAINTS = [
     { id: 'red', label: 'Bharat Red', color: 0xb9380b },
     { id: 'blue', label: 'Highway Blue', color: 0x1d4ed8 },
@@ -825,6 +832,7 @@
     log('upgrade booting, phase', PHASE);
     var T = harvest(sim);
     T_Vector3 = T.Vector3;
+    deriveAssetCtors(T, sim);
     log('harvested:', Object.keys(T).join(','));
     patchLightingPreset(sim);
     tuneSun(sim);
@@ -833,10 +841,11 @@
       try { buildCabinDecor(sim, T); } catch (e) { log('cabin decor failed', e); }
       try { makeTrafficVariants(sim, T); } catch (e) { log('traffic variants failed', e); }
       try { buildParkedTrucks(sim, T); } catch (e) { log('parked trucks failed', e); }
+      try { loadRoadProps(sim, T); } catch (e) { log('road props failed', e); }
       try { buildSelectors(sim, T); } catch (e) { log('selectors failed', e); }
     }
     startCabinLoop(sim);
-    window.__nh44Upgrade = { sim: sim, T: T, cabinRefs: cabinRefs, phase: PHASE, applyBiome: function (b) { applyBiome(sim, T, b); }, applyPaint: function (p) { applyPaint(sim, p); }, applyLivery: function (l) { applyLivery(sim, T, l); } };
+    window.__nh44Upgrade = { sim: sim, T: T, cabinRefs: cabinRefs, phase: PHASE, loadAssetPack: function (url, opts) { return loadAssetPack(T, url, opts); }, applyBiome: function (b) { applyBiome(sim, T, b); }, applyPaint: function (p) { applyPaint(sim, p); }, applyLivery: function (l) { applyLivery(sim, T, l); } };
     log('upgrade ready (phase ' + PHASE + ')');
   });
 })();
